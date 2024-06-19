@@ -1,3 +1,15 @@
+[
+June 19, 2025 - Forked by cah-aamir/iamongit from mwaylabs(https://github.com/mwaylabs/flutter-apns)
+## Updates
+1. Updated all dependencies including firebase_core and firebase_messaging to latest versions.
+2. Fixed deprecated imperative apply of Flutter's Gradle plugins for example app.
+3. Updated to use dart sdk >=3.0.0 <4.0.0.
+4. Updated iOS deployment target for example app to 13.0 and Android compileSdkVersion to 34.
+
+### *Tested on both iOS and Android with Flutter 3.22.0/Dart 3.4.0.
+]
+
+
 # apns
 
 ⛔️ DEPRECATED ⛔️ 
