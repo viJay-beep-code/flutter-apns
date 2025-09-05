@@ -1,15 +1,22 @@
-import 'package:flutter_apns/src/connector.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-class FirebasePushConnector extends PushConnector {
-  late final firebase = FirebaseMessaging.instance;
+import 'connector.dart';
+
+class FirebasePushConnector implements PushConnector {
+  final ValueNotifier<bool?> _isDisabledByUser = ValueNotifier<bool?>(null);
+  final ValueNotifier<String?> _token = ValueNotifier<String?>(null);
+  final String _providerType = 'GCM';
 
   @override
-  final isDisabledByUser = ValueNotifier<bool?>(null);
+  ValueNotifier<bool?> get isDisabledByUser => _isDisabledByUser;
 
-  bool didInitialize = false;
+  @override
+  ValueNotifier<String?> get token => _token;
+
+  @override
+  String get providerType => _providerType;
 
   @override
   Future<void> configure({
@@ -19,43 +26,56 @@ class FirebasePushConnector extends PushConnector {
     MessageHandler? onBackgroundMessage,
     FirebaseOptions? options,
   }) async {
-    if (!didInitialize) {
-      await Firebase.initializeApp(
-        options: options,
-      );
-      didInitialize = true;
+    if (options != null) {
+      await Firebase.initializeApp(options: options);
     }
 
-    firebase.onTokenRefresh.listen((value) {
-      token.value = value;
-    });
+    // Set up message handlers
+    if (onMessage != null) {
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        onMessage(message);
+      });
+    }
 
-    FirebaseMessaging.onMessage.listen(onMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(onResume);
+    if (onLaunch != null) {
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        onLaunch(message);
+      });
+    }
+
+    if (onResume != null) {
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        onResume(message);
+      });
+    }
 
     if (onBackgroundMessage != null) {
       FirebaseMessaging.onBackgroundMessage(onBackgroundMessage);
     }
 
-    final initial = await FirebaseMessaging.instance.getInitialMessage();
-    if (initial != null) {
-      onLaunch?.call(initial);
+    // Get initial message if app was opened from notification
+    RemoteMessage? initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null && onLaunch != null) {
+      onLaunch(initialMessage);
     }
 
-    token.value = await firebase.getToken();
+    // Get token
+    String? token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      _token.value = token;
+    }
+
+    // Listen for token refresh
+    FirebaseMessaging.instance.onTokenRefresh.listen((String newToken) {
+      _token.value = newToken;
+    });
   }
 
   @override
-  final token = ValueNotifier(null);
-
-  @override
   void requestNotificationPermissions() async {
-    if (!didInitialize) {
-      await Firebase.initializeApp();
-      didInitialize = true;
-    }
-
-    NotificationSettings permissions = await firebase.requestPermission(
+    NotificationSettings settings =
+        await FirebaseMessaging.instance.requestPermission(
       alert: true,
       announcement: false,
       badge: true,
@@ -65,21 +85,19 @@ class FirebasePushConnector extends PushConnector {
       sound: true,
     );
 
-    if (permissions.authorizationStatus.name == 'authorized') {
-      isDisabledByUser.value = false;
-    } else if (permissions.authorizationStatus.name == 'denied') {
-      isDisabledByUser.value = true;
-    }
+    _isDisabledByUser.value =
+        settings.authorizationStatus == AuthorizationStatus.denied;
   }
 
   @override
-  String get providerType => 'GCM';
+  Future<void> unregister() async {
+    await FirebaseMessaging.instance.deleteToken();
+    _token.value = null;
+  }
 
   @override
-  Future<void> unregister() async {
-    await firebase.setAutoInitEnabled(false);
-    await firebase.deleteToken();
-
-    token.value = null;
+  void dispose() {
+    _isDisabledByUser.dispose();
+    _token.dispose();
   }
 }
